@@ -1,46 +1,62 @@
-from client import OmieAPI 
+import os
+from client import OmieAPI
+from dotenv import load_dotenv
 
-# Função para automatizar a criação de instâncias e chamada ao método busca_dados
-def obter_dados_omie(tipos, empresa, app_key, app_secret):
+# Carrega as variáveis do arquivo .env
+load_dotenv()
+
+# Recupera as variáveis do ambiente
+acesso = {
+    'TAG': {
+        'lista_empresa': os.getenv('TAG_LISTA_EMPRESA').split(','),  # Converte de string para lista
+        'lista_app_key': os.getenv('TAG_LISTA_APP_KEY').split(','),
+        'lista_app_secret': os.getenv('TAG_LISTA_APP_SECRET').split(','),
+    },
+}
+
+def obter_dados_omie(tipos, empresas, keys, secrets):
+    import pandas as pd
+    
     dados_coletados = {}
     
-    # Itera sobre os tipos fornecidos
-    for tipo in tipos:
-        instancia = OmieAPI(empresa, app_key, app_secret)
-        try:
-            # Chama o método busca_dados e armazena no dicionário
-            dados = instancia.busca_dados(tipo)
-            dados_coletados[tipo] = dados
-        except Exception as e:
-            print(f"Erro ao buscar dados para {tipo}: {e}")
+    # Itera sobre as empresas e credenciais
+    for empresa, app_key, app_secret in zip(empresas, keys, secrets):
+        for tipo in tipos:
+            instancia = OmieAPI(empresa, app_key, app_secret)
+            try:
+                # Chama o método busca_dados e armazena no dicionário
+                dados = instancia.busca_dados(tipo)
+                
+                # Adiciona o nome da empresa como coluna nos dados retornados
+                if isinstance(dados, pd.DataFrame):  # Verifica se é DataFrame
+                    dados['empresa'] = empresa
+                elif isinstance(dados, list):  # Se for lista de dicionários
+                    for item in dados:
+                        item['empresa'] = empresa
+                
+                # Combina dados para cada tipo
+                if tipo not in dados_coletados:
+                    dados_coletados[tipo] = dados
+                else:
+                    if isinstance(dados, pd.DataFrame):  # Concatena DataFrame
+                        dados_coletados[tipo] = pd.concat([dados_coletados[tipo], dados], ignore_index=True)
+                    elif isinstance(dados, list):  # Combina listas
+                        dados_coletados[tipo].extend(dados)
+            except Exception as e:
+                print(f"Erro ao buscar dados para {tipo} na empresa {empresa}: {e}")
     
     return dados_coletados
 
 # Lista de tipos que deseja buscar
-tipos = ['movimentos_financeiros', 'clientes', 'departamentos', 'categorias', 'contas_correntes', 'dres']
+tipos = ['movimentos_financeiros', 'clientes', 'departamentos', 'categorias', 'contas_correntes', 'dres', 'bancos']
 
 # Chamada da função com suas credenciais
-dados = obter_dados_omie(tipos, 'Kibarlana', '4558687441308', 'eaf281d58ee604401cfa047001bed805')
+dados = obter_dados_omie(tipos, acesso['TAG']['lista_empresa'], acesso['TAG']['lista_app_key'], acesso['TAG']['lista_app_secret'])
 
-movimentos_financeiros, clientes, departamentos, categorias, contas_correntes, dres = dados
-
-# Exibe os dados de categorias como exemplo
-# display(dados['categorias'])
-# display(movimentos_financeiros)
-
-categorias = dados['categorias']
 mf = dados['movimentos_financeiros']
 clientes = dados['clientes']
 departamentos = dados['departamentos']
 categorias = dados['categorias']
 contas_correntes = dados['contas_correntes']
 dre = dados['dres']
-
-categorias = categorias.rename(columns={'codigo':'detalhes.cCodCateg','descricao':'categ.descricao'})
-dre = dre.rename(columns={'codigoDRE':'codigo_dre'})
-clientes = clientes.rename(columns={'codigo_cliente_omie':'detalhes.nCodCliente'})
-contas_correntes = contas_correntes.rename(columns={'nCodCC': 'detalhes.nCodCC', 'descricao': 'cc.descricao'})
-mf = mf.merge(categorias, on='detalhes.cCodCateg', how='left')
-mf = mf.merge(dre, on='codigo_dre', how='left')
-mf = mf.merge(clientes, on='detalhes.nCodCliente', how='left')
-mf = mf.merge(contas_correntes, on='detalhes.nCodCC', how='left')
+bancos = dados['bancos']
