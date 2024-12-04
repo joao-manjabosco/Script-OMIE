@@ -1,4 +1,5 @@
 import os
+import methods
 from client import OmieAPI
 from dotenv import load_dotenv
 
